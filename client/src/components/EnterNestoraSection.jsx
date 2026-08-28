@@ -4,12 +4,25 @@ import { useLenisScroll } from '../lib/LenisContext';
 // Recreates lenis.dev's "Enter Lenis" intro, adapted so the "text" is filled
 // with the building photo: a fixed, never-transformed photo sits behind a
 // black layer with a "NESTORA" -shaped hole cut out of it (an SVG mask). As
-// the user scrolls, only that hole — pure vector, so it stays perfectly
-// crisp at any zoom — scales up around the "T", widening the window onto the
-// untouched photo beneath. The photo itself never scales, so it never blurs.
+// the user scrolls, that hole scales up around the screen's center, widening
+// the window onto the untouched photo beneath. The photo itself never
+// scales, so it never blurs.
 //
-// Scale is driven straight off Lenis scroll ticks — no easing/lerp — since
-// the zoom should track scroll exactly, not feel smoothed after it.
+// The zoom is done by shrinking the SVG's `viewBox` rather than a CSS
+// `transform: scale()`. Two reasons: a CSS transform on an SVG element gets
+// composited by rasterizing it once and stretching that texture, which
+// blurs vector content like a bitmap at high zoom. It also builds a
+// composited layer sized at (viewport * scale) — at MAX_SCALE on a mobile
+// viewport that's several thousand pixels per side, past what mobile GPUs
+// can texture, and the layer fails to composite correctly (shows up as the
+// layout going haywire on phones). Shrinking viewBox instead makes the
+// browser genuinely re-render the mask and text at the new zoom level every
+// frame, at their real size — crisp, and no oversized layer.
+//
+// Zoom origin is the screen's exact center — the formula below keeps that
+// point fixed on screen at every scale, so centering on it produces zero
+// drift. Since "NESTORA" itself is centered on screen, this still reads as
+// zooming into the middle of the word.
 
 const SECTION_HEIGHT_VH = 300;
 const MAX_SCALE = 16;
@@ -21,10 +34,7 @@ const CAPTION_FADE_END = 0.12;
 export default function EnterNestoraSection() {
   const wrapperRef = useRef(null);
   const svgRef = useRef(null);
-  const tSpanRef = useRef(null);
-  const overlayRef = useRef(null);
   const captionRef = useRef(null);
-  const originRef = useRef({ x: 0, y: 0 });
 
   const [dims, setDims] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
 
@@ -36,19 +46,6 @@ export default function EnterNestoraSection() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // Re-measure the "T" glyph's position whenever size changes — SVG text
-  // gives pixel-accurate getBBox(), so the zoom origin is exact at any
-  // viewport size with no percentage guesswork.
-  useLayoutEffect(() => {
-    const t = tSpanRef.current;
-    if (!t) return;
-    const box = t.getBBox();
-    originRef.current = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-    if (svgRef.current) {
-      svgRef.current.style.transformOrigin = `${originRef.current.x}px ${originRef.current.y}px`;
-    }
-  }, [dims]);
-
   const handleScroll = () => {
     const el = wrapperRef.current;
     if (!el) return;
@@ -58,7 +55,17 @@ export default function EnterNestoraSection() {
 
     if (svgRef.current) {
       const scale = 1 + progress * (MAX_SCALE - 1);
-      svgRef.current.style.transform = `scale(${scale})`;
+
+      // Origin is the screen center, so this always resolves to a
+      // perfectly centered viewBox at every scale — no drift.
+      const originX = dims.width / 2;
+      const originY = dims.height / 2;
+      const visibleW = dims.width / scale;
+      const visibleH = dims.height / scale;
+      const minX = originX * (1 - 1 / scale);
+      const minY = originY * (1 - 1 / scale);
+      svgRef.current.setAttribute('viewBox', `${minX} ${minY} ${visibleW} ${visibleH}`);
+
       const fadeT = Math.min(1, Math.max(0, (progress - OVERLAY_FADE_START) / (1 - OVERLAY_FADE_START)));
       svgRef.current.style.opacity = 1 - fadeT;
     }
@@ -85,22 +92,23 @@ export default function EnterNestoraSection() {
           className="absolute inset-0 w-full h-full object-cover"
         />
 
-        {/* Black layer with a NESTORA-shaped hole, cut via SVG mask. Only
-            this (vector) layer scales, revealing more of the crisp photo
-            beneath as it zooms into the T. */}
+        {/* Black layer with a NESTORA-shaped hole, cut via SVG mask. Zoom is
+            done via viewBox (not a CSS transform) so the vector content is
+            genuinely re-rendered crisp at every zoom level, with no
+            oversized composited layer. */}
         <svg
           ref={svgRef}
           width={dims.width}
           height={dims.height}
           viewBox={`0 0 ${dims.width} ${dims.height}`}
           className="absolute inset-0"
-          style={{ willChange: 'transform, opacity' }}
+          style={{ willChange: 'opacity' }}
         >
           <mask id="nestora-cutout" maskUnits="userSpaceOnUse">
             <rect x="0" y="0" width={dims.width} height={dims.height} fill="white" />
             <text
-              x="50%"
-              y="50%"
+              x={dims.width / 2}
+              y={dims.height / 2}
               textAnchor="middle"
               dominantBaseline="central"
               fontFamily="'Manrope', system-ui, sans-serif"
@@ -109,9 +117,7 @@ export default function EnterNestoraSection() {
               letterSpacing={-fontSize * 0.03}
               fill="black"
             >
-              NES
-              <tspan ref={tSpanRef}>T</tspan>
-              ORA
+              NESTORA
             </text>
           </mask>
           <rect x="0" y="0" width={dims.width} height={dims.height} fill="black" mask="url(#nestora-cutout)" />
