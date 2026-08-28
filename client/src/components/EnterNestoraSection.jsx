@@ -23,6 +23,16 @@ import { useLenisScroll } from '../lib/LenisContext';
 // point fixed on screen at every scale, so centering on it produces zero
 // drift. Since "NESTORA" itself is centered on screen, this still reads as
 // zooming into the middle of the word.
+//
+// `dims` is measured from the pinned container itself via ResizeObserver,
+// not from window.innerWidth/innerHeight. On mobile, CSS vh units (what
+// `h-screen`/`h-dvh` resolve from) and window.innerHeight can briefly
+// disagree while the browser's address bar animates in or out during a
+// scroll gesture — if the SVG's declared width/height/viewBox are sized off
+// window.innerHeight while its actual rendered box is sized off vh, the two
+// drift out of sync and the zoom appears to shift. Measuring the real
+// rendered box directly removes that mismatch entirely, regardless of what
+// the address bar is doing.
 
 const SECTION_HEIGHT_VH = 300;
 const MAX_SCALE = 16;
@@ -33,24 +43,30 @@ const CAPTION_FADE_END = 0.12;
 
 export default function EnterNestoraSection() {
   const wrapperRef = useRef(null);
+  const stickyRef = useRef(null);
   const svgRef = useRef(null);
   const captionRef = useRef(null);
 
   const [dims, setDims] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
 
   useLayoutEffect(() => {
-    function onResize() {
-      setDims({ width: window.innerWidth, height: window.innerHeight });
+    const el = stickyRef.current;
+    if (!el) return;
+    function measure() {
+      const rect = el.getBoundingClientRect();
+      setDims({ width: rect.width, height: rect.height });
     }
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
 
   const handleScroll = () => {
     const el = wrapperRef.current;
-    if (!el) return;
+    if (!el || !dims.height) return;
     const rect = el.getBoundingClientRect();
-    const scrollable = rect.height - window.innerHeight;
+    const scrollable = rect.height - dims.height;
     const progress = scrollable > 0 ? Math.min(1, Math.max(0, -rect.top / scrollable)) : 0;
 
     if (svgRef.current) {
@@ -84,7 +100,7 @@ export default function EnterNestoraSection() {
 
   return (
     <section ref={wrapperRef} className="relative bg-black" style={{ height: `${SECTION_HEIGHT_VH}vh` }}>
-      <div className="sticky top-0 h-screen overflow-hidden bg-black">
+      <div ref={stickyRef} className="sticky top-0 h-dvh overflow-hidden bg-black">
         {/* Fixed background photo — never transformed, so it never blurs */}
         <img
           src="/hero/scene-0.webp"
