@@ -63,8 +63,16 @@ const SECTION_HEIGHT_VH = 220;
 const MAX_SCALE = 16;
 const HOLD_END = 0.15; // wordmark stays fully still through this point
 const SCALE_END = 0.82; // scale finishes ramping here
-const OVERLAY_FADE_START = 0.68; // overlay fade runs inside the back part of the zoom
-const OVERLAY_FADE_END = 0.82; // ...and finishes exactly as the zoom does
+// The overlay fade runs across the WHOLE zoom (not just its tail). Zooming
+// into real letterforms passes through lopsided intermediate states — the
+// remaining black consolidates into a blocky shape following the glyph's
+// straight edges and corners, not a shape that shrinks symmetrically —
+// since the mask is literal text, not a soft radial shape. Fading opacity
+// in parallel with the entire zoom softens those blocky shapes as they
+// appear instead of leaving them fully opaque until the last moment, which
+// is what read as the black "sliding" toward a corner.
+const OVERLAY_FADE_START = HOLD_END;
+const OVERLAY_FADE_END = SCALE_END;
 const CAPTION_FADE_END = HOLD_END; // caption fades out just as the hold ends
 
 export default function EnterNestoraSection() {
