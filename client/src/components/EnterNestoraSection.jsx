@@ -19,18 +19,25 @@ import { useLenisScroll } from '../lib/LenisContext';
 // browser genuinely re-render the mask and text at the new zoom level every
 // frame, at their real size — crisp, and no oversized layer.
 //
-// Zoom origin is the "T" glyph's real rendered position, read via the SVG
-// text API (getStartPositionOfChar/getEndPositionOfChar — exact, accounts
-// for the actual font metrics, no canvas-measurement guesswork). That
-// measurement runs once per size change (mount + ResizeObserver), not per
-// scroll frame, and is cached in a ref — so it can't jump mid-gesture the
-// way an earlier attempt did when it mixed live measurement with
-// percentage-based text coordinates. Text position here is always fixed
-// pixels, never percentages, so the measured origin stays valid for the
-// whole gesture. The word is centered on screen, but "T" (as the middle
-// letter of 7) sits a few percent off the true center — at MAX_SCALE that
-// few percent is over half the final viewBox width, so without this the
-// zoom lands next to the T rather than on it.
+// The zoom origin is ALWAYS the screen's exact geometric center — that
+// formula is provably drift-free at every scale (proven and reverified
+// multiple times: the center of the viewBox stays locked to width/2,
+// height/2 regardless of scale). Two earlier attempts made the origin the
+// "T" glyph's own position instead, so the zoom would visibly glide toward
+// it as scale increased — that read as the black overlay "sliding off
+// toward a corner," which is exactly what wasn't wanted.
+//
+// To still have the zoom land on "T" (not just the middle of the whole
+// word), the TEXT itself is positioned horizontally so the T glyph's center
+// coincides with the screen's center. That position is computed directly
+// from glyph metrics via the SVG text API's getSubStringLength — which
+// measures advance widths independent of the text element's actual x
+// position — so it's an exact, one-shot formula, not an iterative
+// measure-then-correct pass (which requires the text to already be
+// positioned somewhere to measure, so it only partially converges in one
+// pass). Runs once per size change, not per scroll frame. "T" ends up
+// sitting exactly where the drift-free zoom already converges to, with no
+// need to ever move the zoom's own origin off center.
 //
 // `dims` is measured from the pinned container itself via ResizeObserver,
 // not from window.innerWidth/innerHeight. On mobile, CSS vh units (what
@@ -66,9 +73,9 @@ export default function EnterNestoraSection() {
   const svgRef = useRef(null);
   const textRef = useRef(null);
   const captionRef = useRef(null);
-  const originRef = useRef({ x: 0, y: 0 });
 
   const [dims, setDims] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
+  const [textX, setTextX] = useState(() => window.innerWidth / 2);
 
   useLayoutEffect(() => {
     const el = stickyRef.current;
@@ -83,22 +90,21 @@ export default function EnterNestoraSection() {
     return () => observer.disconnect();
   }, []);
 
-  // Re-measure the "T" glyph's real position whenever size changes. Falls
-  // back to screen center if the text API isn't ready yet (e.g. font still
-  // loading) so the zoom is never left with a stale/undefined origin.
+  // Compute the text's x position so the "T" glyph's center lands exactly
+  // on the screen's center. getSubStringLength measures advance widths from
+  // glyph metrics alone — independent of the text element's current x — so
+  // this is an exact, one-shot formula: no render-measure-correct loop.
   useLayoutEffect(() => {
     const t = textRef.current;
-    let origin = { x: dims.width / 2, y: dims.height / 2 };
-    if (t) {
-      try {
-        const start = t.getStartPositionOfChar(T_INDEX);
-        const end = t.getEndPositionOfChar(T_INDEX);
-        origin = { x: (start.x + end.x) / 2, y: dims.height / 2 };
-      } catch {
-        // keep the screen-center fallback
-      }
+    if (!t) return;
+    try {
+      const totalWidth = t.getSubStringLength(0, NESTORA.length);
+      const prefixWidth = t.getSubStringLength(0, T_INDEX);
+      const tWidth = t.getSubStringLength(T_INDEX, 1);
+      setTextX(dims.width / 2 + totalWidth / 2 - prefixWidth - tWidth / 2);
+    } catch {
+      setTextX(dims.width / 2);
     }
-    originRef.current = origin;
   }, [dims]);
 
   const handleScroll = () => {
@@ -112,7 +118,10 @@ export default function EnterNestoraSection() {
       const zoomT = Math.min(1, Math.max(0, (progress - HOLD_END) / (SCALE_END - HOLD_END)));
       const scale = 1 + zoomT * (MAX_SCALE - 1);
 
-      const { x: originX, y: originY } = originRef.current;
+      // Origin is always the screen center — provably zero drift at every
+      // scale. The text itself (see above) is shifted so "T" sits there.
+      const originX = dims.width / 2;
+      const originY = dims.height / 2;
       const visibleW = dims.width / scale;
       const visibleH = dims.height / scale;
       const minX = originX * (1 - 1 / scale);
@@ -164,7 +173,7 @@ export default function EnterNestoraSection() {
             <rect x="0" y="0" width={dims.width} height={dims.height} fill="white" />
             <text
               ref={textRef}
-              x={dims.width / 2}
+              x={textX}
               y={dims.height / 2}
               textAnchor="middle"
               dominantBaseline="central"
