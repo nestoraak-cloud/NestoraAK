@@ -94,17 +94,27 @@ export default function EnterNestoraSection() {
   // on the screen's center. getSubStringLength measures advance widths from
   // glyph metrics alone — independent of the text element's current x — so
   // this is an exact, one-shot formula: no render-measure-correct loop.
+  //
+  // Measured twice: once immediately (using whatever font is available at
+  // that instant) and again once document.fonts.ready resolves. On a fresh
+  // page load the custom "Manrope" font is often still loading over the
+  // network when this first runs, so that first pass can measure fallback-
+  // font metrics — correct once the real font is actually in.
   useLayoutEffect(() => {
     const t = textRef.current;
     if (!t) return;
-    try {
-      const totalWidth = t.getSubStringLength(0, NESTORA.length);
-      const prefixWidth = t.getSubStringLength(0, T_INDEX);
-      const tWidth = t.getSubStringLength(T_INDEX, 1);
-      setTextX(dims.width / 2 + totalWidth / 2 - prefixWidth - tWidth / 2);
-    } catch {
-      setTextX(dims.width / 2);
+    function measure() {
+      try {
+        const totalWidth = t.getSubStringLength(0, NESTORA.length);
+        const prefixWidth = t.getSubStringLength(0, T_INDEX);
+        const tWidth = t.getSubStringLength(T_INDEX, 1);
+        setTextX(dims.width / 2 + totalWidth / 2 - prefixWidth - tWidth / 2);
+      } catch {
+        setTextX(dims.width / 2);
+      }
     }
+    measure();
+    document.fonts.ready.then(measure);
   }, [dims]);
 
   const handleScroll = () => {
