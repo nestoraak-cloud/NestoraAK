@@ -4,9 +4,9 @@ import { useLenisScroll } from '../lib/LenisContext';
 // Recreates lenis.dev's "Enter Lenis" intro, adapted so the "text" is filled
 // with the building photo: a fixed, never-transformed photo sits behind a
 // black layer with a "NESTORA" -shaped hole cut out of it (an SVG mask). As
-// the user scrolls, that hole scales up around the screen's center, widening
-// the window onto the untouched photo beneath. The photo itself never
-// scales, so it never blurs.
+// the user scrolls, that hole scales up around the "T", widening the window
+// onto the untouched photo beneath. The photo itself never scales, so it
+// never blurs.
 //
 // The zoom is done by shrinking the SVG's `viewBox` rather than a CSS
 // `transform: scale()`. Two reasons: a CSS transform on an SVG element gets
@@ -19,33 +19,54 @@ import { useLenisScroll } from '../lib/LenisContext';
 // browser genuinely re-render the mask and text at the new zoom level every
 // frame, at their real size — crisp, and no oversized layer.
 //
-// Zoom origin is the screen's exact center — the formula below keeps that
-// point fixed on screen at every scale, so centering on it produces zero
-// drift. Since "NESTORA" itself is centered on screen, this still reads as
-// zooming into the middle of the word.
+// Zoom origin is the "T" glyph's real rendered position, read via the SVG
+// text API (getStartPositionOfChar/getEndPositionOfChar — exact, accounts
+// for the actual font metrics, no canvas-measurement guesswork). That
+// measurement runs once per size change (mount + ResizeObserver), not per
+// scroll frame, and is cached in a ref — so it can't jump mid-gesture the
+// way an earlier attempt did when it mixed live measurement with
+// percentage-based text coordinates. Text position here is always fixed
+// pixels, never percentages, so the measured origin stays valid for the
+// whole gesture. The word is centered on screen, but "T" (as the middle
+// letter of 7) sits a few percent off the true center — at MAX_SCALE that
+// few percent is over half the final viewBox width, so without this the
+// zoom lands next to the T rather than on it.
 //
 // `dims` is measured from the pinned container itself via ResizeObserver,
 // not from window.innerWidth/innerHeight. On mobile, CSS vh units (what
-// `h-screen`/`h-dvh` resolve from) and window.innerHeight can briefly
-// disagree while the browser's address bar animates in or out during a
-// scroll gesture — if the SVG's declared width/height/viewBox are sized off
+// `h-dvh` resolves from) and window.innerHeight can briefly disagree while
+// the browser's address bar animates in or out during a scroll gesture —
+// if the SVG's declared width/height/viewBox are sized off
 // window.innerHeight while its actual rendered box is sized off vh, the two
 // drift out of sync and the zoom appears to shift. Measuring the real
 // rendered box directly removes that mismatch entirely, regardless of what
 // the address bar is doing.
+//
+// Progress through the pinned section runs in three phases: a HOLD where
+// the wordmark just sits there readable (the text "comes in straight," no
+// zoom yet), a ZOOM into the T with the overlay fading out near the end of
+// it, and a short tail where the fully-revealed photo is visible on its own
+// before the next section takes over — kept brief so it reads as a quick
+// reveal, not extra scrolling with nothing happening.
 
-const SECTION_HEIGHT_VH = 300;
+const NESTORA = 'NESTORA';
+const T_INDEX = NESTORA.indexOf('T');
+
+const SECTION_HEIGHT_VH = 220;
 const MAX_SCALE = 16;
-// The black/text mask fades out over this tail of the zoom, guaranteeing a
-// clean "fully revealed photo" end state regardless of exact mask geometry.
-const OVERLAY_FADE_START = 0.85;
-const CAPTION_FADE_END = 0.12;
+const HOLD_END = 0.15; // wordmark stays fully still through this point
+const SCALE_END = 0.82; // scale finishes ramping here
+const OVERLAY_FADE_START = 0.68; // overlay fade runs inside the back part of the zoom
+const OVERLAY_FADE_END = 0.82; // ...and finishes exactly as the zoom does
+const CAPTION_FADE_END = HOLD_END; // caption fades out just as the hold ends
 
 export default function EnterNestoraSection() {
   const wrapperRef = useRef(null);
   const stickyRef = useRef(null);
   const svgRef = useRef(null);
+  const textRef = useRef(null);
   const captionRef = useRef(null);
+  const originRef = useRef({ x: 0, y: 0 });
 
   const [dims, setDims] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
 
@@ -62,6 +83,24 @@ export default function EnterNestoraSection() {
     return () => observer.disconnect();
   }, []);
 
+  // Re-measure the "T" glyph's real position whenever size changes. Falls
+  // back to screen center if the text API isn't ready yet (e.g. font still
+  // loading) so the zoom is never left with a stale/undefined origin.
+  useLayoutEffect(() => {
+    const t = textRef.current;
+    let origin = { x: dims.width / 2, y: dims.height / 2 };
+    if (t) {
+      try {
+        const start = t.getStartPositionOfChar(T_INDEX);
+        const end = t.getEndPositionOfChar(T_INDEX);
+        origin = { x: (start.x + end.x) / 2, y: dims.height / 2 };
+      } catch {
+        // keep the screen-center fallback
+      }
+    }
+    originRef.current = origin;
+  }, [dims]);
+
   const handleScroll = () => {
     const el = wrapperRef.current;
     if (!el || !dims.height) return;
@@ -70,19 +109,20 @@ export default function EnterNestoraSection() {
     const progress = scrollable > 0 ? Math.min(1, Math.max(0, -rect.top / scrollable)) : 0;
 
     if (svgRef.current) {
-      const scale = 1 + progress * (MAX_SCALE - 1);
+      const zoomT = Math.min(1, Math.max(0, (progress - HOLD_END) / (SCALE_END - HOLD_END)));
+      const scale = 1 + zoomT * (MAX_SCALE - 1);
 
-      // Origin is the screen center, so this always resolves to a
-      // perfectly centered viewBox at every scale — no drift.
-      const originX = dims.width / 2;
-      const originY = dims.height / 2;
+      const { x: originX, y: originY } = originRef.current;
       const visibleW = dims.width / scale;
       const visibleH = dims.height / scale;
       const minX = originX * (1 - 1 / scale);
       const minY = originY * (1 - 1 / scale);
       svgRef.current.setAttribute('viewBox', `${minX} ${minY} ${visibleW} ${visibleH}`);
 
-      const fadeT = Math.min(1, Math.max(0, (progress - OVERLAY_FADE_START) / (1 - OVERLAY_FADE_START)));
+      const fadeT = Math.min(
+        1,
+        Math.max(0, (progress - OVERLAY_FADE_START) / (OVERLAY_FADE_END - OVERLAY_FADE_START))
+      );
       svgRef.current.style.opacity = 1 - fadeT;
     }
     if (captionRef.current) {
@@ -123,6 +163,7 @@ export default function EnterNestoraSection() {
           <mask id="nestora-cutout" maskUnits="userSpaceOnUse">
             <rect x="0" y="0" width={dims.width} height={dims.height} fill="white" />
             <text
+              ref={textRef}
               x={dims.width / 2}
               y={dims.height / 2}
               textAnchor="middle"
@@ -133,7 +174,7 @@ export default function EnterNestoraSection() {
               letterSpacing={-fontSize * 0.03}
               fill="black"
             >
-              NESTORA
+              {NESTORA}
             </text>
           </mask>
           <rect x="0" y="0" width={dims.width} height={dims.height} fill="black" mask="url(#nestora-cutout)" />
