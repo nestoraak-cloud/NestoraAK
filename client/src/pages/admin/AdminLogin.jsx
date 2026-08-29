@@ -30,7 +30,7 @@ export default function AdminLogin() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
-          className="w-full border border-[#1f4d36]/15 rounded-lg px-4 py-3 text-sm"
+          className="w-full border border-[#261f17]/15 rounded-lg px-4 py-3 text-sm"
         />
         <input
           type="password"
@@ -38,12 +38,12 @@ export default function AdminLogin() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
-          className="w-full border border-[#1f4d36]/15 rounded-lg px-4 py-3 text-sm"
+          className="w-full border border-[#261f17]/15 rounded-lg px-4 py-3 text-sm"
         />
         {error && <p className="text-red-600 text-sm">{error}</p>}
         <button
           type="submit"
-          className="w-full px-6 py-3 bg-[#1f4d36] text-[#faf3e7] rounded-full text-sm hover:bg-[#143527] transition-colors"
+          className="w-full px-6 py-3 bg-[#261f17] text-[#faf3e7] rounded-full text-sm hover:bg-[#1b1610] transition-colors"
         >
           Log in
         </button>

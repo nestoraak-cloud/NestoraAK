@@ -57,6 +57,7 @@ export default function EnterNestoraSection() {
   const stickyRef = useRef(null);
   const circleRef = useRef(null);
   const textRef = useRef(null);
+  const welcomeRef = useRef(null);
   const captionRef = useRef(null);
   const tCenterRef = useRef({ x: 0, y: 0 });
 
@@ -121,10 +122,9 @@ export default function EnterNestoraSection() {
       );
       circleRef.current.setAttribute('r', eased * maxRadius);
     }
-    if (captionRef.current) {
-      const captionT = Math.min(1, Math.max(0, progress / CAPTION_FADE_END));
-      captionRef.current.style.opacity = 1 - captionT;
-    }
+    const captionT = Math.min(1, Math.max(0, progress / CAPTION_FADE_END));
+    if (captionRef.current) captionRef.current.style.opacity = 1 - captionT;
+    if (welcomeRef.current) welcomeRef.current.style.opacity = 1 - captionT;
   };
 
   useLenisScroll(handleScroll);
@@ -175,6 +175,14 @@ export default function EnterNestoraSection() {
           </mask>
           <rect x="0" y="0" width={dims.width} height={dims.height} fill="black" mask="url(#nestora-cutout)" />
         </svg>
+
+        <p
+          ref={welcomeRef}
+          className="absolute left-0 right-0 text-center text-sm md:text-base tracking-[0.3em] uppercase text-[#faf3e7]/70"
+          style={{ top: `calc(50% - ${fontSize * 0.42}px)`, transform: 'translateY(-100%)' }}
+        >
+          Welcome to
+        </p>
 
         <p
           ref={captionRef}

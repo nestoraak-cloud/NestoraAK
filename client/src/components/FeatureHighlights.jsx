@@ -26,8 +26,8 @@ export default function FeatureHighlights() {
                 <Icon />
                 <span className="font-display text-sm">{f.num}</span>
               </div>
-              <h3 className="font-display text-2xl md:text-3xl text-[#1f4d36] mt-3">{f.title}</h3>
-              <p className="mt-2 text-[#1f4d36]/60 max-w-sm">{f.body}</p>
+              <h3 className="font-display text-2xl md:text-3xl text-[#261f17] mt-3">{f.title}</h3>
+              <p className="mt-2 text-[#261f17]/60 max-w-sm">{f.body}</p>
             </motion.div>
           );
         })}

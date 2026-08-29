@@ -20,7 +20,7 @@ export default function MapPage() {
       <p className="text-xs tracking-[0.3em] uppercase text-[#d97f2e] font-medium mb-2">
         Delhi NCR
       </p>
-      <h1 className="font-display text-3xl text-[#1f4d36] mb-8">Properties on the Map</h1>
+      <h1 className="font-display text-3xl text-[#261f17] mb-8">Properties on the Map</h1>
       {loading ? <Loader /> : <MapView properties={properties} height="65vh" />}
     </div>
   );

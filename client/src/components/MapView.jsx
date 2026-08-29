@@ -16,7 +16,7 @@ const icon = new L.Icon({
 // Default center: New Delhi
 export default function MapView({ properties, center = [28.6139, 77.209], zoom = 11, height = '500px' }) {
   return (
-    <div style={{ height }} className="rounded-xl overflow-hidden border border-[#1f4d36]/10">
+    <div style={{ height }} className="rounded-xl overflow-hidden border border-[#261f17]/10">
       <MapContainer center={center} zoom={zoom} style={{ width: '100%', height: '100%' }}>
         <TileLayer
           attribution='&copy; OpenStreetMap contributors'

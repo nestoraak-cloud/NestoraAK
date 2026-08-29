@@ -37,8 +37,8 @@ export default function AdminDashboard() {
   return (
     <div className="max-w-5xl mx-auto px-6 py-16">
       <div className="flex items-center justify-between mb-8">
-        <h1 className="font-display text-3xl text-[#1f4d36]">Admin Dashboard</h1>
-        <button onClick={logout} className="text-sm text-[#1f4d36]/60 hover:text-[#1f4d36]">
+        <h1 className="font-display text-3xl text-[#261f17]">Admin Dashboard</h1>
+        <button onClick={logout} className="text-sm text-[#261f17]/60 hover:text-[#261f17]">
           Log out
         </button>
       </div>
@@ -54,7 +54,7 @@ export default function AdminDashboard() {
       ) : (
         <button
           onClick={() => setCreating(true)}
-          className="mb-8 px-5 py-2 bg-[#1f4d36] text-[#faf3e7] rounded-full text-sm"
+          className="mb-8 px-5 py-2 bg-[#261f17] text-[#faf3e7] rounded-full text-sm"
         >
           + Add Property
         </button>
@@ -65,7 +65,7 @@ export default function AdminDashboard() {
       ) : (
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="text-left border-b border-[#1f4d36]/10 text-[#1f4d36]/50">
+            <tr className="text-left border-b border-[#261f17]/10 text-[#261f17]/50">
               <th className="py-2">Title</th>
               <th className="py-2">Price</th>
               <th className="py-2">Status</th>
@@ -74,7 +74,7 @@ export default function AdminDashboard() {
           </thead>
           <tbody>
             {properties.map((p) => (
-              <tr key={p.id} className="border-b border-[#1f4d36]/5">
+              <tr key={p.id} className="border-b border-[#261f17]/5">
                 <td className="py-3">{p.title}</td>
                 <td className="py-3">{formatINR(p.price)}</td>
                 <td className="py-3 capitalize">{p.status}</td>
