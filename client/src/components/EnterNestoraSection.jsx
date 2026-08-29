@@ -3,87 +3,64 @@ import { useLenisScroll } from '../lib/LenisContext';
 
 // Recreates lenis.dev's "Enter Lenis" intro, adapted so the "text" is filled
 // with the building photo: a fixed, never-transformed photo sits behind a
-// black layer with a "NESTORA" -shaped hole cut out of it (an SVG mask). As
-// the user scrolls, that hole scales up around the "T", widening the window
-// onto the untouched photo beneath. The photo itself never scales, so it
-// never blurs.
+// black layer with a "NESTORA" -shaped hole cut out of it (an SVG mask), so
+// at rest it reads as the wordmark filled with the photo.
 //
-// The zoom is done by shrinking the SVG's `viewBox` rather than a CSS
-// `transform: scale()`. Two reasons: a CSS transform on an SVG element gets
-// composited by rasterizing it once and stretching that texture, which
-// blurs vector content like a bitmap at high zoom. It also builds a
-// composited layer sized at (viewport * scale) — at MAX_SCALE on a mobile
-// viewport that's several thousand pixels per side, past what mobile GPUs
-// can texture, and the layer fails to composite correctly (shows up as the
-// layout going haywire on phones). Shrinking viewBox instead makes the
-// browser genuinely re-render the mask and text at the new zoom level every
-// frame, at their real size — crisp, and no oversized layer.
+// The reveal itself is NOT done by zooming the letterforms. An earlier
+// version shrank the SVG's viewBox to make the "T" hole grow to fill the
+// screen — but letters have straight edges and corners, so as that zoom
+// passed through the glyph's actual ink boundary, the remaining black
+// consolidated into lopsided, blocky shapes (following the letter's
+// geometry) rather than shrinking symmetrically. No amount of retuning the
+// zoom origin or the fade timing fixes that: it's inherent to zooming into
+// a non-radially-symmetric shape.
 //
-// The zoom origin is ALWAYS the screen's exact geometric center — that
-// formula is provably drift-free at every scale (proven and reverified
-// multiple times: the center of the viewBox stays locked to width/2,
-// height/2 regardless of scale). Two earlier attempts made the origin the
-// "T" glyph's own position instead, so the zoom would visibly glide toward
-// it as scale increased — that read as the black overlay "sliding off
-// toward a corner," which is exactly what wasn't wanted.
+// Instead, a plain <circle> is added to the SAME mask, centered on the "T",
+// with its radius driven by scroll progress from 0 up to past the screen's
+// diagonal. A circle is radially symmetric at every radius by construction
+// — there is no orientation for it to look like it's drifting toward. It
+// reads as the camera moving through the T: the aperture starts at that
+// point and expands outward, consuming the surrounding black uniformly in
+// every direction, until it exceeds the screen and the reveal is complete.
+// The overlay's opacity never changes — it stays fully opaque the entire
+// time; only the growing circular hole ever reveals anything, and the
+// black only fully clears once the circle has geometrically covered the
+// whole screen, timed to happen right as the scroll gesture completes.
 //
-// To still have the zoom land on "T" (not just the middle of the whole
-// word), the TEXT itself is positioned horizontally so the T glyph's center
-// coincides with the screen's center. That position is computed directly
-// from glyph metrics via the SVG text API's getSubStringLength — which
-// measures advance widths independent of the text element's actual x
-// position — so it's an exact, one-shot formula, not an iterative
-// measure-then-correct pass (which requires the text to already be
-// positioned somewhere to measure, so it only partially converges in one
-// pass). Runs once per size change, not per scroll frame. "T" ends up
-// sitting exactly where the drift-free zoom already converges to, with no
-// need to ever move the zoom's own origin off center.
+// "T"'s position is measured once per size change via the SVG text API
+// (getStartPositionOfChar/getEndPositionOfChar — exact glyph metrics), then
+// re-measured once document.fonts.ready resolves (the custom "Manrope" font
+// can still be loading over the network on a fresh page load when this
+// first runs, which would otherwise measure fallback-font metrics).
 //
 // `dims` is measured from the pinned container itself via ResizeObserver,
-// not from window.innerWidth/innerHeight. On mobile, CSS vh units (what
-// `h-dvh` resolves from) and window.innerHeight can briefly disagree while
-// the browser's address bar animates in or out during a scroll gesture —
-// if the SVG's declared width/height/viewBox are sized off
-// window.innerHeight while its actual rendered box is sized off vh, the two
-// drift out of sync and the zoom appears to shift. Measuring the real
-// rendered box directly removes that mismatch entirely, regardless of what
-// the address bar is doing.
+// not window.innerWidth/innerHeight — on mobile, CSS vh units and
+// window.innerHeight can briefly disagree while the browser's address bar
+// animates during a scroll gesture.
 //
-// Progress through the pinned section runs in three phases: a HOLD where
-// the wordmark just sits there readable (the text "comes in straight," no
-// zoom yet), a ZOOM into the T with the overlay fading out near the end of
-// it, and a short tail where the fully-revealed photo is visible on its own
-// before the next section takes over — kept brief so it reads as a quick
-// reveal, not extra scrolling with nothing happening.
+// Progress through the pinned section runs in two phases: a HOLD where the
+// wordmark just sits there readable (the text "comes in straight," no
+// reveal yet), then the circular reveal growing all the way to the end of
+// the pinned section's scroll range — so the black overlay is present for
+// the entire gesture and the reveal finishes exactly as the section
+// releases into the next one, with no dead tail either side.
 
 const NESTORA = 'NESTORA';
 const T_INDEX = NESTORA.indexOf('T');
 
 const SECTION_HEIGHT_VH = 220;
-const MAX_SCALE = 16;
 const HOLD_END = 0.15; // wordmark stays fully still through this point
-const SCALE_END = 0.82; // scale finishes ramping here
-// The overlay fade runs across the WHOLE zoom (not just its tail). Zooming
-// into real letterforms passes through lopsided intermediate states — the
-// remaining black consolidates into a blocky shape following the glyph's
-// straight edges and corners, not a shape that shrinks symmetrically —
-// since the mask is literal text, not a soft radial shape. Fading opacity
-// in parallel with the entire zoom softens those blocky shapes as they
-// appear instead of leaving them fully opaque until the last moment, which
-// is what read as the black "sliding" toward a corner.
-const OVERLAY_FADE_START = HOLD_END;
-const OVERLAY_FADE_END = SCALE_END;
 const CAPTION_FADE_END = HOLD_END; // caption fades out just as the hold ends
 
 export default function EnterNestoraSection() {
   const wrapperRef = useRef(null);
   const stickyRef = useRef(null);
-  const svgRef = useRef(null);
+  const circleRef = useRef(null);
   const textRef = useRef(null);
   const captionRef = useRef(null);
+  const tCenterRef = useRef({ x: 0, y: 0 });
 
   const [dims, setDims] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
-  const [textX, setTextX] = useState(() => window.innerWidth / 2);
 
   useLayoutEffect(() => {
     const el = stickyRef.current;
@@ -98,27 +75,23 @@ export default function EnterNestoraSection() {
     return () => observer.disconnect();
   }, []);
 
-  // Compute the text's x position so the "T" glyph's center lands exactly
-  // on the screen's center. getSubStringLength measures advance widths from
-  // glyph metrics alone — independent of the text element's current x — so
-  // this is an exact, one-shot formula: no render-measure-correct loop.
-  //
-  // Measured twice: once immediately (using whatever font is available at
-  // that instant) and again once document.fonts.ready resolves. On a fresh
-  // page load the custom "Manrope" font is often still loading over the
-  // network when this first runs, so that first pass can measure fallback-
-  // font metrics — correct once the real font is actually in.
+  // Locate the "T" glyph's real center so the reveal circle starts exactly
+  // there. Re-measured once fonts.ready resolves in case the first pass ran
+  // before the custom font had actually loaded.
   useLayoutEffect(() => {
     const t = textRef.current;
     if (!t) return;
     function measure() {
       try {
-        const totalWidth = t.getSubStringLength(0, NESTORA.length);
-        const prefixWidth = t.getSubStringLength(0, T_INDEX);
-        const tWidth = t.getSubStringLength(T_INDEX, 1);
-        setTextX(dims.width / 2 + totalWidth / 2 - prefixWidth - tWidth / 2);
+        const start = t.getStartPositionOfChar(T_INDEX);
+        const end = t.getEndPositionOfChar(T_INDEX);
+        tCenterRef.current = { x: (start.x + end.x) / 2, y: dims.height / 2 };
       } catch {
-        setTextX(dims.width / 2);
+        tCenterRef.current = { x: dims.width / 2, y: dims.height / 2 };
+      }
+      if (circleRef.current) {
+        circleRef.current.setAttribute('cx', tCenterRef.current.x);
+        circleRef.current.setAttribute('cy', tCenterRef.current.y);
       }
     }
     measure();
@@ -132,25 +105,21 @@ export default function EnterNestoraSection() {
     const scrollable = rect.height - dims.height;
     const progress = scrollable > 0 ? Math.min(1, Math.max(0, -rect.top / scrollable)) : 0;
 
-    if (svgRef.current) {
-      const zoomT = Math.min(1, Math.max(0, (progress - HOLD_END) / (SCALE_END - HOLD_END)));
-      const scale = 1 + zoomT * (MAX_SCALE - 1);
-
-      // Origin is always the screen center — provably zero drift at every
-      // scale. The text itself (see above) is shifted so "T" sits there.
-      const originX = dims.width / 2;
-      const originY = dims.height / 2;
-      const visibleW = dims.width / scale;
-      const visibleH = dims.height / scale;
-      const minX = originX * (1 - 1 / scale);
-      const minY = originY * (1 - 1 / scale);
-      svgRef.current.setAttribute('viewBox', `${minX} ${minY} ${visibleW} ${visibleH}`);
-
-      const fadeT = Math.min(
-        1,
-        Math.max(0, (progress - OVERLAY_FADE_START) / (OVERLAY_FADE_END - OVERLAY_FADE_START))
+    if (circleRef.current) {
+      const revealT = Math.min(1, Math.max(0, (progress - HOLD_END) / (1 - HOLD_END)));
+      // Eased in — starts slow, accelerates, like a camera picking up speed
+      // as it dives through. Max radius is the exact distance from "T" to
+      // the farthest screen corner, so full coverage is guaranteed on any
+      // aspect ratio or off-center T position, not just a comfortable guess.
+      const eased = revealT * revealT;
+      const { x: cx, y: cy } = tCenterRef.current;
+      const maxRadius = Math.max(
+        Math.hypot(cx, cy),
+        Math.hypot(dims.width - cx, cy),
+        Math.hypot(cx, dims.height - cy),
+        Math.hypot(dims.width - cx, dims.height - cy)
       );
-      svgRef.current.style.opacity = 1 - fadeT;
+      circleRef.current.setAttribute('r', eased * maxRadius);
     }
     if (captionRef.current) {
       const captionT = Math.min(1, Math.max(0, progress / CAPTION_FADE_END));
@@ -175,23 +144,22 @@ export default function EnterNestoraSection() {
           className="absolute inset-0 w-full h-full object-cover"
         />
 
-        {/* Black layer with a NESTORA-shaped hole, cut via SVG mask. Zoom is
-            done via viewBox (not a CSS transform) so the vector content is
-            genuinely re-rendered crisp at every zoom level, with no
-            oversized composited layer. */}
+        {/* Black layer with a NESTORA-shaped hole (the at-rest wordmark) plus
+            a circular hole that grows from the "T" to drive the reveal. The
+            overlay's own opacity never changes — only the growing circle
+            geometry ever reveals anything, which is what keeps the reveal
+            perfectly symmetric at every step. */}
         <svg
-          ref={svgRef}
           width={dims.width}
           height={dims.height}
           viewBox={`0 0 ${dims.width} ${dims.height}`}
           className="absolute inset-0"
-          style={{ willChange: 'opacity' }}
         >
           <mask id="nestora-cutout" maskUnits="userSpaceOnUse">
             <rect x="0" y="0" width={dims.width} height={dims.height} fill="white" />
             <text
               ref={textRef}
-              x={textX}
+              x={dims.width / 2}
               y={dims.height / 2}
               textAnchor="middle"
               dominantBaseline="central"
@@ -203,6 +171,7 @@ export default function EnterNestoraSection() {
             >
               {NESTORA}
             </text>
+            <circle ref={circleRef} cx={dims.width / 2} cy={dims.height / 2} r="0" fill="black" />
           </mask>
           <rect x="0" y="0" width={dims.width} height={dims.height} fill="black" mask="url(#nestora-cutout)" />
         </svg>
