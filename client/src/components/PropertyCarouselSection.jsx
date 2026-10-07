@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { formatINR } from '../lib/currency';
 import api from '../lib/api';
+import Tilt from './Tilt';
 
 export default function PropertyCarouselSection() {
   const [properties, setProperties] = useState([]);
@@ -64,23 +65,23 @@ export default function PropertyCarouselSection() {
             className="no-scrollbar flex gap-5 overflow-x-auto scroll-smooth snap-x snap-mandatory pb-4"
           >
             {properties.map((p) => (
-              <Link
-                key={p.id}
-                to={`/listings/${p.id}`}
-                data-card
-                className="snap-start shrink-0 w-[78vw] sm:w-[320px] rounded-xl overflow-hidden border border-[#261f17]/10 bg-white"
-              >
-                <div className="aspect-[4/3] bg-[#261f17]/5">
-                  {p.images?.[0] && (
-                    <img src={p.images[0]} alt={p.title} className="w-full h-full object-cover" />
-                  )}
-                </div>
-                <div className="p-4">
-                  <p className="text-[#d97f2e] font-semibold">{formatINR(p.price)}</p>
-                  <h4 className="font-medium mt-1 text-[#261f17]">{p.title}</h4>
-                  <p className="text-sm text-[#261f17]/60 mt-1">{p.address}</p>
-                </div>
-              </Link>
+              <Tilt key={p.id} data-card max={7} className="snap-start shrink-0 w-[78vw] sm:w-[320px]" innerClassName="h-full">
+                <Link
+                  to={`/listings/${p.id}`}
+                  className="block h-full rounded-xl overflow-hidden border border-[#261f17]/10 bg-white shadow-[0_18px_40px_-20px_rgba(38,31,23,0.35)] hover:shadow-[0_30px_60px_-20px_rgba(217,127,46,0.45)] transition-shadow"
+                >
+                  <div className="aspect-[4/3] bg-[#261f17]/5">
+                    {p.images?.[0] && (
+                      <img src={p.images[0]} alt={p.title} className="w-full h-full object-cover" />
+                    )}
+                  </div>
+                  <div className="p-4">
+                    <p className="text-[#d97f2e] font-semibold">{formatINR(p.price)}</p>
+                    <h4 className="font-medium mt-1 text-[#261f17]">{p.title}</h4>
+                    <p className="text-sm text-[#261f17]/60 mt-1">{p.address}</p>
+                  </div>
+                </Link>
+              </Tilt>
             ))}
           </div>
         )}
