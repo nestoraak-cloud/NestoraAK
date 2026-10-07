@@ -6,7 +6,7 @@ import * as THREE from 'three';
 // texture, the city is ~100 boxes, the camera is driven by scroll progress.
 // Lazy-loaded from SkylineSection so three.js stays out of the main bundle.
 
-const FOG = '#2b1a0e';
+const FOG = '#6a3a16';
 const TIERS = [
   { w: 14, h: 30, y0: 0 },
   { w: 10, h: 22, y0: 30 },
@@ -180,7 +180,7 @@ function Sky() {
     const g = new THREE.SphereGeometry(900, 32, 16);
     const pos = g.attributes.position;
     const from = new THREE.Color(FOG);
-    const to = new THREE.Color('#07060a');
+    const to = new THREE.Color('#150b06');
     const col = new Float32Array(pos.count * 3);
     const c = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
@@ -228,7 +228,7 @@ export default function SkylineScene({ progress, active }) {
 
       <mesh rotation-x={-Math.PI / 2}>
         <planeGeometry args={[1800, 1800]} />
-        <meshStandardMaterial color="#120d09" roughness={0.95} />
+        <meshStandardMaterial color="#1c130c" roughness={0.95} />
       </mesh>
       <gridHelper args={[240, 48, '#d97f2e', '#4a3320']} position-y={0.02} />
       <mesh rotation-x={-Math.PI / 2} position-y={0.05}>
